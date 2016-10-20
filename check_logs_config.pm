@@ -9,7 +9,7 @@ $DEBUG=1;
 # main working dir
 $WORKING_DIR='/opt/check_logs01';
 
-# check new files every $SCAN_INTERVAL ( in seconds )
+# check new files every $SCAN_INTERVAL ( in seconds ) for daemon mode
 $SCAN_INTERVAL=60; 
 
 # Dir for 'redirecti scanned error lines'

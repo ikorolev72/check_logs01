@@ -7,8 +7,10 @@ A "watchdog" script running in backgroud on linux servers and
 scanning log files in two differents folders.
 
 ### How to install
-Extract archive to any folder ( eg /opt/check_logs01 ).
-Make ```chmod +x check_logs.pl```. 
+Extract archive with ```tar -x -C /opt -f check_logs01.tgz``` to folder /opt ( you can use any folder, 
+but change $WORKING_DIR in check_logs_config.pm  ) . Your working dir now: /opt/check_logs01
+
+
 Edit the _check_logs_config.pm_ with your prefferences:
    +  @SCAN_DIRS - dirs you plane to scan
    +  @LAST_SCANED_TIME_DB - database files, where will be saved data: filename, modification time, line count
