@@ -5,6 +5,8 @@
 
 use Data::Dumper;
 use Getopt::Long;
+use Mail::Sendmail;
+
 use check_logs_config;
 
 GetOptions (
@@ -17,13 +19,13 @@ if( $daemon ) {
 	$DEBUG=0;
 	while( 1 ) {
 		foreach $i ( 0..$#SCAN_DIRS ) {
-			scan_dir( @SCAN_DIRS[$i], @LAST_SCANED_TIME[$i] );
+			scan_dir( $SCAN_DIRS[$i], $LAST_SCANED_TIME_DB[$i] );
 		}	
 		sleep( $SCAN_INTERVAL );
 	}
 } else {
 		foreach $i ( 0..$#SCAN_DIRS ) {
-			scan_dir( @SCAN_DIRS[$i], @LAST_SCANED_TIME[$i] );
+			scan_dir( $SCAN_DIRS[$i], $LAST_SCANED_TIME_DB[$i] );
 		}	
 }
 
@@ -37,66 +39,103 @@ sub scan_dir {
 	my $dir=shift; # scan this dir 
 	my $lastchecked_file=shift; # read last checked time and save here the current time
 	
-	my $lastchecked=ReadFile( $lastchecked_file );
-	my $time_now=get_date( time(), "%s%.2i%.2i_%.2i%.2i%.2i" );
-	unless( $lastchecked ) {
-		$lastchecked=$time_now;
+	my $lastchecked_tmp=ReadFile( $lastchecked_file );
+	my $lastchecked_db;
+	if( $lastchecked_tmp ) {		
+		eval "$lastchecked_tmp";
+		if( $@ ){
+			w2log( "Error: $@" );
+		} else {
+			$lastchecked_db=$VAR1;
+		}
 	}
+	
+	
+	#my $time_now=get_date( time(), "%s%.2i%.2i_%.2i%.2i%.2i" );
 	# we will save the current time and will check in future only new files
-	WriteFile( $lastchecked_file, $time_now  ) ;
 
-	opendir(DIR, $dir) || w2log( "can't opendir $dir: $!" );
+	unless( opendir(DIR, $dir) ) {
+		w2log( "can't opendir $dir: $!" );	
+		return 0;
+	} 
 	while( readdir(DIR) ) {
 		my $filename=$_;
 		foreach $filemask ( @CHECK_FILE_MASK  ) {			
 			if( $filename=~/^$filemask$/ && -f "$dir/$filename" ) {
-				print "$filename $filemask \n";
-				if( $1 > $lastchecked ) {	
-					scan_file( "$dir/$filename" );
-				}
-				else {
-					next;
-				}
+				my ($dev,$ino,$mode,$nlink,$uid,$gid,$rdev,$size,$atime,$mtime,$ctime,$blksize,$blocks) = stat( "$dir/$filename" );
+				#print "$filename $filemask \n";
+				my $lines=0;
+				
+				if( $lastchecked_db->{$filename}->{mtime} ) {
+					# if we check this file but it modified
+					if( $mtime <= $lastchecked_db->{$filename}->{mtime} ) {
+						next;
+					}
+				} 
+				$lines=scan_file( "$dir/$filename" , $lastchecked_db->{$filename}->{lines} );
+				$lastchecked_db->{$filename}->{mtime}=$mtime;
+				$lastchecked_db->{$filename}->{lines}=$lines;				
+			}
+			else {
+				next;
 			}
 		}
 	}
 	closedir DIR;
+	
+	# save the db into file
+	# this file can be very big and we will save it to tmp file and then remove
+	if( WriteFile( "$lastchecked_file.tmp", Dumper( $lastchecked_db )  ) ) {
+		return 1 if( rename( "$lastchecked_file.tmp", $lastchecked_file ) );
+	}
+	w2log( "Cannot save the db file $lastchecked_file: $!" );
+	return 0;
 }
 
 
 sub scan_file {
 	my $filename=shift;
+	my $skip_lines=shift;
 	unless( open (IN,"$filename") ) {		
 		w2log("Can't open file $filename") ;
 		return 0;
 	}
-	$count_str=0;
+	$count_lines=0;
 	while (<IN>) { 
-		$count_str++;
+		$count_lines++;
+		if( $skip_lines > $count_lines ) {
+			next;
+		}
+		
 		my $str=$_;
-		foreach $error_level ( keys %$KEYWORD ) {
-			if( grep{ $str=~/$_/ }@{ $KEYWORD{$error_level} } ) {
-				$filename=~/(\w+_\d{8}_\d{6})\.log$/;
-				my $error_file="$LOGDIR/$1.$error_level";
-				AppendFile( $error_file, $str );
-				w2log( "Found error keyword level $error_level in the file: $filename on the string number: $count_str");
-				w2log( "Error keyword found in the string: $str");
-				if( $error_level=~/ALERT/ ){
-					my $mail_body="Found error keyword level $error_level in the file: $filename on the string number: $count_str\n";
-					$mail_body.="Error keyword found in the string: $str\n";
-					send_mail( $mail_body );
+		foreach $error_level ( keys %KEYWORDS ) {
+			foreach $keyword ( @{ $KEYWORDS{$error_level} } ) {
+				if( $str=~/$keyword/i  ) {
+					$filename=~/(\w+_\d{8}_\d{6})\.log$/;
+					my $error_file="$LOGDIR/$1.$error_level";
+					AppendFile( $error_file, $str );
+					#w2log( "Found error keyword level $error_level in the file: $filename on the string number: $count_lines");
+					#w2log( "Error keyword found in the string: $str");
+					if( $error_level=~/ALERT/i ){
+						my $mail_body="Found error keyword level $error_level in the file: $filename on the string number: $count_lines\n";
+						$mail_body.="Error keyword found in the string: $str\n";
+						send_mail( $mail_body );
+					}
 				}
 			}
 			
 		}
 	}
 	close (IN);	
-	return 1;
+	return $count_lines;
 }
 
 sub send_mail {
-	$msg=shift;
-	print $msg;
+	$MAIL{'Message'}=shift;
+	unless ( sendmail(%MAIL) )  {
+		w2log( "Cannot send email from $MAIL{'From'} to $MAIL{'To'}. Smtp server $MAIL{'Smtp'}. Sendmail::error " );
+	}
+
 }
 
 sub get_date {
@@ -110,8 +149,11 @@ sub get_date {
 
 sub w2log {
 	my $msg=shift;
-	# dayly log file
-	my $log="$LOGDIR/".get_date( time(),"%s-%.2i-%.2i" ).".log"; 
+	# daily log file
+	my $log=shift;
+	unless( $log ) {
+		$log=$LOGFILE; 
+	}
 	open (LOG,">>$log") || print STDERR ("Can't open file $log. $msg") ;
 	print LOG get_date()."\t$msg\n";
 	print STDERR "$msg\n" if( $DEBUG );
