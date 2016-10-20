@@ -114,8 +114,6 @@ sub scan_file {
 					$filename=~/(\w+_\d{8}_\d{6})\.log$/;
 					my $error_file="$LOGDIR/$1.$error_level";
 					AppendFile( $error_file, $str );
-					#w2log( "Found error keyword level $error_level in the file: $filename on the string number: $count_lines");
-					#w2log( "Error keyword found in the string: $str");
 					if( $error_level=~/ALERT/i ){
 						my $mail_body="Found error keyword level $error_level in the file: $filename on the string number: $count_lines\n";
 						$mail_body.="Error keyword found in the string: $str\n";
@@ -134,6 +132,7 @@ sub send_mail {
 	$MAIL{'Message'}=shift;
 	unless ( sendmail(%MAIL) )  {
 		w2log( "Cannot send email from $MAIL{'From'} to $MAIL{'To'}. Smtp server $MAIL{'Smtp'}. Sendmail::error " );
+		w2log( "Mailbody: $MAIL{'Message'}" );
 	}
 
 }
