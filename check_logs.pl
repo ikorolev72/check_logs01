@@ -101,12 +101,12 @@ sub scan_file {
 		return 0;
 	}
 	$count_lines=0;
+	my $mail_body='';
 	while (<IN>) { 
 		$count_lines++;
 		if( $skip_lines > $count_lines ) {
 			next;
 		}
-		
 		my $str=$_;
 		foreach $error_level ( keys %KEYWORDS ) {
 			foreach $keyword ( @{ $KEYWORDS{$error_level} } ) {
@@ -115,15 +115,15 @@ sub scan_file {
 					my $error_file="$LOGDIR/$1.$error_level";
 					AppendFile( $error_file, $str );
 					if( $error_level=~/ALERT/i ){
-						my $mail_body="Found error keyword level $error_level in the file: $filename on the string number: $count_lines\n";
-						$mail_body.="Error keyword found in the string: $str\n";
-						send_mail( $mail_body );
+						$mail_body.="Found error keyword level $error_level in the file: $filename on the string number: $count_lines\n";
+						$mail_body.="Error keyword found in the string: $str\n\n";
 					}
 				}
 			}
 			
 		}
 	}
+	send_mail( $mail_body ) if( $mail_body );	
 	close (IN);	
 	return $count_lines;
 }

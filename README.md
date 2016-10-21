@@ -8,7 +8,7 @@ scanning log files in two differents folders.
 
 ### How to install
 Extract archive with ```tar -x -C /opt -f check_logs01.tgz``` to folder /opt ( you can use any folder, 
-but change $WORKING_DIR in check_logs_config.pm  ) . Your working dir now: /opt/check_logs01
+but change $WORKING_DIR in check_logs_config.pm  ) . Your working dir now: ```/opt/check_logs01```
 
 
 Edit the _check_logs_config.pm_ with your prefferences:
